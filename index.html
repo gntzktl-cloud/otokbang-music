@@ -538,7 +538,7 @@
     <!-- File Upload Modal -->
     <div class="modal-overlay" id="upload-modal">
         <div class="modal-card">
-            <h3>🎵 새 곡 등록 (음악 URL + 이미지 파일)</h3>
+            <h3>🎵 새 곡 등록 (오디오 URL + 자켓 이미지)</h3>
             <div class="form-group">
                 <label>곡 제목</label>
                 <input type="text" id="upload-title" placeholder="예: 오늘도 우리 방은 난리야">
@@ -548,9 +548,9 @@
                 <input type="text" id="upload-album" value="OTOKBANG 1ST ALBUM">
             </div>
             <div class="form-group">
-                <label>오디오 파일 주소 (URL)</label>
-                <input type="text" id="upload-audio-url" placeholder="블로그, 클라우드 등의 MP3 링크 입력">
-                <div class="file-upload-info">💡 블로그 등에 음악을 올리고 링크를 복사해 붙여넣으세요! (용량 제한 없음)</div>
+                <label>오디오 파일 주소 (구글 드라이브 링크 등)</label>
+                <input type="text" id="upload-audio-url" placeholder="구글 드라이브 공유 링크 붙여넣기">
+                <div class="file-upload-info">💡 구글 드라이브 링크를 넣으면 자동으로 재생 링크로 변환됩니다!</div>
             </div>
             <div class="form-group">
                 <label>앨범 자켓 이미지 파일 선택 (.jpg, .png 등)</label>
@@ -861,7 +861,7 @@
             const pw = document.getElementById('admin-pw').value;
             if (pw === ADMIN_PASSWORD) {
                 isAdminLoggedIn = true;
-                document.getElementById('password-modal').style.display, document.getElementById('password-modal').style.display = 'none';
+                document.getElementById('password-modal').style.display = 'none';
                 document.getElementById('admin-pw').value = '';
                 document.getElementById('upload-modal').style.display = 'flex';
                 renderPlaylist();
@@ -870,18 +870,32 @@
             }
         }
 
+        function convertDriveUrl(url) {
+            // 구글 드라이브 공유 링크인 경우 직접 다운로드/재생 링크로 변환
+            let match = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+            if (match && match[1]) {
+                return `https://docs.google.com/uc?export=download&id=${match[1]}`;
+            }
+            match = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+            if (match && match[1]) {
+                return `https://docs.google.com/uc?export=download&id=${match[1]}`;
+            }
+            return url;
+        }
+
         function addTrackToServer() {
             let title = document.getElementById('upload-title').value.trim();
             let album = document.getElementById('upload-album').value.trim();
-            let audioUrl = document.getElementById('upload-audio-url').value.trim();
+            let rawAudioUrl = document.getElementById('upload-audio-url').value.trim();
             let coverFile = document.getElementById('upload-cover-file').files[0];
             let lyrics = document.getElementById('upload-lyrics').value.trim();
 
-            if (!title || !audioUrl) {
-                alert("곡 제목과 오디오 파일 주소(URL)는 필수입니다!");
+            if (!title || !rawAudioUrl) {
+                alert("곡 제목과 오디오 파일 주소는 필수입니다!");
                 return;
             }
 
+            let audioUrl = convertDriveUrl(rawAudioUrl);
             loadingOverlay.style.display = 'flex';
             let defaultCover = "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=60";
 
