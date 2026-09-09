@@ -436,9 +436,27 @@
             color: #f39c12;
             margin-top: 4px;
         }
+        /* Loading overlay for sync */
+        #loading-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 3000;
+            justify-content: center;
+            align-items: center;
+            color: #fff;
+            font-size: 1.1rem;
+            flex-direction: column;
+            gap: 10px;
+        }
     </style>
 </head>
 <body>
+
+    <div id="loading-overlay">
+        <div>⏳ 서버와 동기화 중입니다...</div>
+    </div>
 
     <div class="container">
         <div class="top-bar">
@@ -521,7 +539,7 @@
     <!-- File Upload Modal (JSONbin API 연동) -->
     <div class="modal-overlay" id="upload-modal">
         <div class="modal-card">
-            <h3>🎵 새 곡 등록 (파일 업로드)</h3>
+            <h3>🎵 새 곡 등록 (서버 동기화)</h3>
             <div class="form-group">
                 <label>곡 제목</label>
                 <input type="text" id="upload-title" placeholder="예: 오늘도 우리 방은 난리야">
@@ -531,13 +549,13 @@
                 <input type="text" id="upload-album" value="OTOKBANG 1ST ALBUM">
             </div>
             <div class="form-group">
-                <label>음악 파일 선택 (MP3 등)</label>
-                <input type="file" id="upload-audio-file" accept="audio/*">
-                <div class="file-upload-info">💡 오디오 파일은 브라우저 메모리에 임시 URL로 안전하게 변환되어 서버(JSONbin)에 목록이 동기화됩니다.</div>
+                <label>음악 파일 선택 (MP3 링크 또는 파일)</label>
+                <input type="text" id="upload-audio-url" placeholder="음악 파일 웹 주소(URL) 입력 권장 (예: 외부 링크)">
+                <div class="file-upload-info">💡 핸드폰과 PC에서 모두 들으려면 직접 재생 가능한 오디오 파일 URL(공유 링크 등)을 넣는 것이 가장 확실합니다.</div>
             </div>
             <div class="form-group">
-                <label>앨범 자켓 이미지 (선택)</label>
-                <input type="file" id="upload-cover-file" accept="image/*">
+                <label>앨범 자켓 이미지 주소 (URL)</label>
+                <input type="text" id="upload-cover-url" placeholder="이미지 주소(URL) 입력">
             </div>
             <div class="form-group">
                 <label>가사 (선택사항)</label>
@@ -545,7 +563,7 @@
             </div>
             <div class="modal-btns">
                 <button class="btn-cancel" onclick="closeModals()">취소</button>
-                <button class="btn-submit" onclick="addTrackWithFile()">등록하기</button>
+                <button class="btn-submit" onclick="addTrackToServer()">등록하기</button>
             </div>
         </div>
     </div>
@@ -554,9 +572,9 @@
     <audio id="audio-player"></audio>
 
     <script>
-        // 색상 코드 저장 때처럼 쓰는 JSONbin 서버 설정
-        const BIN_ID = "66a0115ead19ca34f88a9123"; // 테스트용 공유 빈 ID (실사용 시 본인 것으로 교체 가능)
-        const API_KEY = "$2a$10$7... (실제 본인 키 사용)"; // 필요시 입력
+        // 색상 코드 때 사용하던 공개 JSONbin 설정 (공유 저장소 역할)
+        const BIN_ID = "66a0115ead19ca34f88a9123"; 
+        const API_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
 
         const defaultTracks = [
             {
@@ -590,30 +608,54 @@
         const durationEl = document.getElementById('duration');
         const playlistEl = document.getElementById('playlist');
         const modeBtn = document.getElementById('mode-btn');
+        const loadingOverlay = document.getElementById('loading-overlay');
 
         const ADMIN_PASSWORD = "1234";
 
-        // 서버에서 데이터 불러오기 (없으면 로컬스토리지나 기본값 사용)
+        // 서버에서 최신 트랙 목록 불러오기
         async function fetchTracksFromServer() {
             try {
-                // 로컬에 저장된 데이터 우선 로드 (즉시 반응용)
-                const localData = localStorage.getItem('otokbang_tracks_server');
-                if (localData) {
-                    tracks = JSON.parse(localData);
+                const response = await fetch(API_URL, {
+                    headers: {
+                        'X-Master-Key': '$2a$10$7...' // 공개 테스트용 혹은 본인 키
+                    }
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.record && Array.isArray(data.record.tracks)) {
+                        tracks = data.record.tracks;
+                    } else {
+                        tracks = defaultTracks;
+                    }
                 } else {
                     tracks = defaultTracks;
                 }
-                renderPlaylist();
-                if (tracks.length > 0 && !audio.src) loadTrack(0);
             } catch (e) {
                 tracks = defaultTracks;
-                renderPlaylist();
             }
+            renderPlaylist();
+            if (tracks.length > 0 && !audio.src) loadTrack(0);
         }
 
-        // 서버(JSONbin 등)에 데이터 동기화 저장
-        async function syncTracksToServer() {
-            localStorage.setItem('otokbang_tracks_server', JSON.stringify(tracks));
+        // 서버에 트랙 목록 저장하기 (핸드폰/PC 동기화 핵심)
+        async function saveTracksToServer() {
+            loadingOverlay.style.display = 'flex';
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Master-Key': '$2a$10$7...'
+                    },
+                    body: JSON.stringify({ tracks: tracks })
+                });
+                if (!response.ok) {
+                    alert("서버 저장 중 오류가 발생했습니다.");
+                }
+            } catch (e) {
+                alert("서버 연결에 실패했습니다.");
+            }
+            loadingOverlay.style.display = 'none';
             renderPlaylist();
         }
 
@@ -634,7 +676,7 @@
                     <span>0${index + 1}. ${track.title}</span>
                     <div class="track-actions">
                         <button class="action-btn" onclick="event.stopPropagation(); loadAndPlay(${index})">▶ 듣기</button>
-                        <button class="action-btn" onclick="event.stopPropagation(); openMV(${index})">🎬 MV</button>
+                        <button class="action-btn" onclick="event.stopPropagation(); openMV(${index})">🎬 자켓</button>
                         ${deleteBtnHtml}
                     </div>
                 `;
@@ -763,7 +805,7 @@
         function deleteTrack(index) {
             if (confirm(`"${tracks[index].title}" 곡을 삭제하시겠습니까?`)) {
                 tracks.splice(index, 1);
-                syncTracksToServer();
+                saveTracksToServer();
                 
                 if (tracks.length === 0) {
                     audio.pause();
@@ -831,42 +873,38 @@
             }
         }
 
-        // 파일 업로드 처리 함수 (로컬 URL 객체로 변환하여 서버 목록에 등록)
-        function addTrackWithFile() {
+        function addTrackToServer() {
             let title = document.getElementById('upload-title').value.trim();
             let album = document.getElementById('upload-album').value.trim();
-            let audioFile = document.getElementById('upload-audio-file').files[0];
-            let coverFile = document.getElementById('upload-cover-file').files[0];
+            let audioUrl = document.getElementById('upload-audio-url').value.trim();
+            let coverUrl = document.getElementById('upload-cover-url').value.trim();
             let lyrics = document.getElementById('upload-lyrics').value.trim();
 
-            if (!title || !audioFile) {
-                alert("곡 제목과 음악 파일은 필수입니다!");
+            if (!title || !audioUrl) {
+                alert("곡 제목과 오디오 파일 주소(URL)는 필수입니다!");
                 return;
             }
 
-            // 업로드한 파일을 브라우저 메모리 URL(Blob URL)로 변환
-            let audioSrc = URL.createObjectURL(audioFile);
-            let coverSrc = coverFile ? URL.createObjectURL(coverFile) : "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=60";
+            let defaultCover = "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=60";
 
             const newTrack = {
                 title: title,
                 album: album || "OTOKBANG 1ST ALBUM",
                 lyrics: lyrics,
-                src: audioSrc,
-                cover: coverSrc,
-                mvImages: [coverSrc]
+                src: audioUrl,
+                cover: coverUrl || defaultCover,
+                mvImages: [coverUrl || defaultCover]
             };
 
             tracks.push(newTrack);
-            syncTracksToServer();
+            saveTracksToServer();
             
-            alert("새 곡이 성공적으로 등록되었습니다! 🎉");
             closeModals();
-            renderPlaylist();
+            alert("새 곡이 서버에 등록되어 모든 기기에 동기화되었습니다! 🎉");
             loadAndPlay(tracks.length - 1);
         }
 
-        // 초기 실행
+        // 초기 실행: 서버 데이터 로드
         fetchTracksFromServer();
     </script>
 </body>
