@@ -7,6 +7,7 @@
     <!-- Firebase SDK (Compat 버전) -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 
     <style>
         :root {
@@ -424,11 +425,6 @@
             background: #333345;
             color: var(--text-secondary);
         }
-        .file-upload-info {
-            font-size: 0.75rem;
-            color: #f39c12;
-            margin-top: 4px;
-        }
         #loading-overlay {
             display: none;
             position: fixed;
@@ -447,7 +443,7 @@
 <body>
 
     <div id="loading-overlay">
-        <div>⏳ 파이어베이스에 파일 업로드 중...</div>
+        <div>⏳ 파이어베이스에 처리 중...</div>
     </div>
 
     <div class="container">
@@ -560,35 +556,26 @@
     <audio id="audio-player"></audio>
 
     <script>
-        // TODO: 본인의 파이어베이스 콘솔 설정값(Firebase Config)을 아래에 입력하세요!
         const firebaseConfig = {
-  apiKey: "AIzaSyAj4CCgV6atYPO-VXtFHHn4yNShyt9GFAk",
-  authDomain: "otokbang-music.firebaseapp.com",
-  projectId: "otokbang-music",
-  storageBucket: "otokbang-music.firebasestorage.app",
-  messagingSenderId: "94896671987",
-  appId: "1:94896671987:web:2986050d1655ec43c9fb86"
-};
+            apiKey: "AIzaSyAj4CCgV6atYPO-VXtFHHn4yNShyt9GFAk",
+            authDomain: "otokbang-music.firebaseapp.com",
+            projectId: "otokbang-music",
+            storageBucket: "otokbang-music.firebasestorage.app",
+            messagingSenderId: "94896671987",
+            appId: "1:94896671987:web:2986050d1655ec43c9fb86"
+        };
 
         // Firebase 초기화
         firebase.initializeApp(firebaseConfig);
         const storage = firebase.storage();
+        const db = firebase.firestore();
 
-        let defaultTracks = [
-            {
-                title: "오늘도 우리 방은 난리야 (샘플)",
-                album: "OTOKBANG 1ST ALBUM",
-                lyrics: "자~ 오늘도 출석체크!",
-                src: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
-                cover: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=60"
-            }
-        ];
-
-        let tracks = JSON.parse(localStorage.getItem('otokbang_tracks')) || defaultTracks;
+        let tracks = [];
         let currentTrackIndex = 0;
         let playMode = 'sequential'; 
         let isAdminLoggedIn = false;
         let isLyricsShowing = false;
+        let isFirstLoad = true;
 
         const audio = document.getElementById('audio-player');
         const playBtn = document.getElementById('play-btn');
@@ -607,9 +594,39 @@
 
         const ADMIN_PASSWORD = "1234";
 
-        function saveTracks() {
-            localStorage.setItem('otokbang_tracks', JSON.stringify(tracks));
-        }
+        // Firestore 실시간 동기화 리스너 등록
+        db.collection("playlist").orderBy("createdAt", "asc").onSnapshot((snapshot) => {
+            const newTracks = [];
+            snapshot.forEach((doc) => {
+                newTracks.push({ id: doc.id, ...doc.data() });
+            });
+            
+            tracks = newTracks;
+
+            // 만약 곡이 아예 없으면 기본 샘플 자동 생성
+            if (tracks.length === 0) {
+                const sampleTrack = {
+                    title: "오늘도 우리 방은 난리야 (샘플)",
+                    album: "OTOKBANG 1ST ALBUM",
+                    lyrics: "자~ 오늘도 출석체크!",
+                    src: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+                    cover: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=60",
+                    createdAt: Date.now()
+                };
+                db.collection("playlist").add(sampleTrack);
+                return;
+            }
+
+            renderPlaylist();
+
+            if (isFirstLoad && tracks.length > 0) {
+                loadTrack(0);
+                isFirstLoad = false;
+            } else if (currentTrackIndex >= tracks.length) {
+                currentTrackIndex = tracks.length - 1;
+                loadTrack(currentTrackIndex);
+            }
+        });
 
         function renderPlaylist() {
             playlistEl.innerHTML = '';
@@ -622,7 +639,7 @@
                     <div class="track-actions">
                         <button class="action-btn" onclick="event.stopPropagation(); loadAndPlay(${index})">▶ 듣기</button>
                         <button class="action-btn" onclick="event.stopPropagation(); openMV(${index})">🎬 자켓</button>
-                        <button class="action-btn btn-delete" onclick="event.stopPropagation(); deleteTrack(${index})">🗑️ 삭제</button>
+                        <button class="action-btn btn-delete" onclick="event.stopPropagation(); deleteTrack('${track.id}', ${index})">🗑️ 삭제</button>
                     </div>
                 `;
                 li.onclick = () => loadAndPlay(index);
@@ -747,26 +764,15 @@
             }
         }
 
-        function deleteTrack(index) {
+        async function deleteTrack(docId, index) {
             if (confirm(`"${tracks[index].title}" 곡을 삭제하시겠습니까?`)) {
-                tracks.splice(index, 1);
-                saveTracks();
-                
-                if (tracks.length === 0) {
-                    audio.pause();
-                    audio.src = "";
-                    titleEl.innerText = "등록된 곡이 없습니다";
-                    albumEl.innerText = "";
-                    artEl.src = "";
-                    lyricsBgEl.style.backgroundImage = "";
-                    lyricsContentEl.innerText = "";
-                } else if (currentTrackIndex >= tracks.length) {
-                    currentTrackIndex = tracks.length - 1;
-                    loadTrack(currentTrackIndex);
-                } else {
-                    renderPlaylist();
+                try {
+                    await db.collection("playlist").doc(docId).delete();
+                    alert("곡이 삭제되었습니다.");
+                } catch (error) {
+                    console.error(error);
+                    alert("삭제 중 오류가 발생했습니다: " + error.message);
                 }
-                alert("곡이 삭제되었습니다.");
             }
         }
 
@@ -843,34 +849,27 @@
                     coverUrl = await coverSnapshot.ref.getDownloadURL();
                 }
 
-                // 3. 트랙 데이터 추가 및 저장
+                // 3. Firestore 데이터베이스에 곡 정보 추가 (실시간 동기화 핵심)
                 const newTrack = {
                     title: title,
                     album: album || "OTOKBANG 1ST ALBUM",
                     lyrics: lyrics,
                     src: audioUrl,
-                    cover: coverUrl
+                    cover: coverUrl,
+                    createdAt: Date.now()
                 };
 
-                tracks.push(newTrack);
-                saveTracks();
+                await db.collection("playlist").add(newTrack);
+
                 closeModals();
-                renderPlaylist();
                 loadingOverlay.style.display = 'none';
-                alert("파이어베이스 업로드 및 곡 등록 완료! 🎉");
-                loadAndPlay(tracks.length - 1);
+                alert("파이어베이스 클라우드 등록 완료! 🎉");
 
             } catch (error) {
                 loadingOverlay.style.display = 'none';
                 console.error(error);
                 alert("업로드 중 오류가 발생했습니다: " + error.message);
             }
-        }
-
-        // 초기 실행
-        renderPlaylist();
-        if (tracks.length > 0) {
-            loadTrack(0);
         }
     </script>
 </body>
