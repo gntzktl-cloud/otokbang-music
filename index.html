@@ -538,7 +538,7 @@
     <!-- File Upload Modal -->
     <div class="modal-overlay" id="upload-modal">
         <div class="modal-card">
-            <h3>🎵 새 곡 등록 (파일 직접 업로드)</h3>
+            <h3>🎵 새 곡 등록 (음악 URL + 이미지 파일)</h3>
             <div class="form-group">
                 <label>곡 제목</label>
                 <input type="text" id="upload-title" placeholder="예: 오늘도 우리 방은 난리야">
@@ -548,12 +548,12 @@
                 <input type="text" id="upload-album" value="OTOKBANG 1ST ALBUM">
             </div>
             <div class="form-group">
-                <label>오디오 파일 선택 (.mp3 등)</label>
-                <input type="file" id="upload-audio-file" accept="audio/*">
-                <div class="file-upload-info">💡 컴퓨터/핸드폰의 음악 파일을 선택하세요.</div>
+                <label>오디오 파일 주소 (URL)</label>
+                <input type="text" id="upload-audio-url" placeholder="블로그, 클라우드 등의 MP3 링크 입력">
+                <div class="file-upload-info">💡 블로그 등에 음악을 올리고 링크를 복사해 붙여넣으세요! (용량 제한 없음)</div>
             </div>
             <div class="form-group">
-                <label>앨범 자켓 이미지 선택 (.jpg, .png 등)</label>
+                <label>앨범 자켓 이미지 파일 선택 (.jpg, .png 등)</label>
                 <input type="file" id="upload-cover-file" accept="image/*">
             </div>
             <div class="form-group">
@@ -853,7 +853,7 @@
             document.getElementById('password-modal').style.display = 'none';
             document.getElementById('upload-modal').style.display = 'none';
             document.getElementById('admin-pw').value = '';
-            document.getElementById('upload-audio-file').value = '';
+            document.getElementById('upload-audio-url').value = '';
             document.getElementById('upload-cover-file').value = '';
         }
 
@@ -861,7 +861,7 @@
             const pw = document.getElementById('admin-pw').value;
             if (pw === ADMIN_PASSWORD) {
                 isAdminLoggedIn = true;
-                document.getElementById('password-modal').style.display = 'none';
+                document.getElementById('password-modal').style.display, document.getElementById('password-modal').style.display = 'none';
                 document.getElementById('admin-pw').value = '';
                 document.getElementById('upload-modal').style.display = 'flex';
                 renderPlaylist();
@@ -873,35 +873,28 @@
         function addTrackToServer() {
             let title = document.getElementById('upload-title').value.trim();
             let album = document.getElementById('upload-album').value.trim();
-            let audioFile = document.getElementById('upload-audio-file').files[0];
+            let audioUrl = document.getElementById('upload-audio-url').value.trim();
             let coverFile = document.getElementById('upload-cover-file').files[0];
             let lyrics = document.getElementById('upload-lyrics').value.trim();
 
-            if (!title || !audioFile) {
-                alert("곡 제목과 오디오 파일은 필수입니다!");
+            if (!title || !audioUrl) {
+                alert("곡 제목과 오디오 파일 주소(URL)는 필수입니다!");
                 return;
             }
 
             loadingOverlay.style.display = 'flex';
+            let defaultCover = "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=60";
 
-            const audioReader = new FileReader();
-            audioReader.onload = function(audioEvent) {
-                const audioBase64 = audioEvent.target.result;
-
-                let defaultCover = "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=60";
-
-                if (coverFile) {
-                    const coverReader = new FileReader();
-                    coverReader.onload = function(coverEvent) {
-                        const coverBase64 = coverEvent.target.result;
-                        saveNewTrackData(title, album, audioBase64, coverBase64, lyrics);
-                    };
-                    coverReader.readAsDataURL(coverFile);
-                } else {
-                    saveNewTrackData(title, album, audioBase64, defaultCover, lyrics);
-                }
-            };
-            audioReader.readAsDataURL(audioFile);
+            if (coverFile) {
+                const coverReader = new FileReader();
+                coverReader.onload = function(coverEvent) {
+                    const coverBase64 = coverEvent.target.result;
+                    saveNewTrackData(title, album, audioUrl, coverBase64, lyrics);
+                };
+                coverReader.readAsDataURL(coverFile);
+            } else {
+                saveNewTrackData(title, album, audioUrl, defaultCover, lyrics);
+            }
         }
 
         function saveNewTrackData(title, album, audioSrc, coverSrc, lyrics) {
@@ -917,7 +910,7 @@
             tracks.push(newTrack);
             saveTracksToServer().then(() => {
                 closeModals();
-                alert("새 곡이 서버에 등록되었습니다! 🎉");
+                alert("새 곡이 서버에 등록되어 동기화되었습니다! 🎉");
                 loadAndPlay(tracks.length - 1);
             });
         }
