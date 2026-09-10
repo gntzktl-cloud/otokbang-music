@@ -33,6 +33,7 @@
             align-items: center;
             min-height: 100vh;
             padding: 20px;
+            overflow-x: hidden;
         }
 
         .container {
@@ -219,7 +220,7 @@
             justify-content: center;
             align-items: center;
             gap: 12px;
-            margin-bottom: 24px;
+            margin-bottom: 10px;
         }
         .btn {
             background: none;
@@ -256,22 +257,54 @@
             background: rgba(255, 87, 34, 0.15);
         }
 
-        .playlist-section {
+        /* 오른쪽 슬라이드 플레이리스트 드로어 */
+        .playlist-drawer {
+            position: fixed;
+            top: 0;
+            right: -100%;
+            width: 100%;
+            max-width: 400px;
+            height: 100%;
             background: #15151c;
-            padding: 20px;
-            border-top: 1px solid #2a2a38;
+            z-index: 2500;
+            box-shadow: -10px 0 30px rgba(0,0,0,0.7);
+            transition: right 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+            display: flex;
+            flex-direction: column;
+            padding: 24px;
         }
-        .playlist-title {
-            font-size: 0.9rem;
-            color: var(--text-secondary);
-            margin-bottom: 12px;
+        .playlist-drawer.open {
+            right: 0;
+        }
+        .drawer-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #2a2a38;
+            padding-bottom: 12px;
+        }
+        .drawer-title {
+            font-size: 1rem;
+            color: var(--accent-color);
             text-transform: uppercase;
             letter-spacing: 1px;
+            font-weight: bold;
+        }
+        .drawer-close-btn {
+            background: #2a2a38;
+            border: none;
+            color: #fff;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 0.9rem;
         }
         .playlist {
             list-style: none;
-            max-height: 200px;
             overflow-y: auto;
+            flex: 1;
         }
         .playlist li {
             display: flex;
@@ -281,7 +314,8 @@
             border-radius: 8px;
             cursor: pointer;
             transition: background 0.2s;
-            margin-bottom: 4px;
+            margin-bottom: 6px;
+            background: #1a1a24;
         }
         .playlist li:hover {
             background: rgba(255,255,255,0.05);
@@ -289,6 +323,7 @@
         .playlist li.active {
             background: rgba(255, 87, 34, 0.15);
             color: var(--accent-color);
+            border: 1px solid rgba(255, 87, 34, 0.3);
         }
         .track-actions {
             display: flex;
@@ -315,12 +350,24 @@
             color: #fff;
         }
 
+        /* 배경 어둡게 처리하는 오버레이 */
+        .drawer-backdrop {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.6);
+            z-index: 2400;
+            display: none;
+        }
+        .drawer-backdrop.open {
+            display: block;
+        }
+
         #mv-modal {
             display: none;
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.9);
-            z-index: 1000;
+            z-index: 3000;
             justify-content: center;
             align-items: center;
             flex-direction: column;
@@ -362,7 +409,7 @@
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.8);
-            z-index: 2000;
+            z-index: 3500;
             justify-content: center;
             align-items: center;
             padding: 20px;
@@ -430,7 +477,7 @@
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.8);
-            z-index: 3000;
+            z-index: 4000;
             justify-content: center;
             align-items: center;
             color: #fff;
@@ -446,9 +493,22 @@
         <div>⏳ 파이어베이스에 처리 중...</div>
     </div>
 
+    <!-- 배경 백드롭 -->
+    <div class="drawer-backdrop" id="drawer-backdrop" onclick="togglePlaylistView()"></div>
+
+    <!-- 우측 슬라이드 플레이리스트 -->
+    <div class="playlist-drawer" id="playlist-drawer">
+        <div class="drawer-header">
+            <span class="drawer-title">🎵 Track List</span>
+            <button class="drawer-close-btn" onclick="togglePlaylistView()">✕</button>
+        </div>
+        <ul class="playlist" id="playlist"></ul>
+    </div>
+
     <div class="container">
         <div class="top-bar">
-            <button class="admin-link-btn" onclick="openAdminCheck()">⚙️ 곡 추가하기</button>
+            <button class="admin-link-btn" onclick="togglePlaylistView()">📜 플레이리스트</button>
+            <button class="admin-link-btn" onclick="openAdminCheck()">⚙️ 곡 추가</button>
         </div>
 
         <div class="header">
@@ -493,11 +553,6 @@
                 <button class="btn btn-play" id="play-btn" onclick="togglePlay()" title="재생/일시정지">▶</button>
                 <button class="btn" onclick="nextTrack()" title="다음 곡">⏭</button>
             </div>
-        </div>
-
-        <div class="playlist-section">
-            <div class="playlist-title">Track List</div>
-            <ul class="playlist" id="playlist"></ul>
         </div>
     </div>
 
@@ -565,7 +620,6 @@
             appId: "1:94896671987:web:2986050d1655ec43c9fb86"
         };
 
-        // Firebase 초기화
         firebase.initializeApp(firebaseConfig);
         const storage = firebase.storage();
         const db = firebase.firestore();
@@ -589,12 +643,13 @@
         const currentTimeEl = document.getElementById('current-time');
         const durationEl = document.getElementById('duration');
         const playlistEl = document.getElementById('playlist');
+        const playlistDrawer = document.getElementById('playlist-drawer');
+        const drawerBackdrop = document.getElementById('drawer-backdrop');
         const modeBtn = document.getElementById('mode-btn');
         const loadingOverlay = document.getElementById('loading-overlay');
 
         const ADMIN_PASSWORD = "1234";
 
-        // Firestore 실시간 동기화 리스너 등록
         db.collection("playlist").orderBy("createdAt", "asc").onSnapshot((snapshot) => {
             const newTracks = [];
             snapshot.forEach((doc) => {
@@ -603,7 +658,6 @@
             
             tracks = newTracks;
 
-            // 만약 곡이 아예 없으면 기본 샘플 자동 생성
             if (tracks.length === 0) {
                 const sampleTrack = {
                     title: "오늘도 우리 방은 난리야 (샘플)",
@@ -627,6 +681,11 @@
                 loadTrack(currentTrackIndex);
             }
         });
+
+        function togglePlaylistView() {
+            playlistDrawer.classList.toggle('open');
+            drawerBackdrop.classList.toggle('open');
+        }
 
         function renderPlaylist() {
             playlistEl.innerHTML = '';
@@ -836,12 +895,10 @@
             loadingOverlay.style.display = 'flex';
 
             try {
-                // 1. 오디오 파일 업로드
                 const audioRef = storage.ref().child('audios/' + Date.now() + '_' + audioFile.name);
                 const audioSnapshot = await audioRef.put(audioFile);
                 const audioUrl = await audioSnapshot.ref.getDownloadURL();
 
-                // 2. 자켓 이미지 업로드 (선택사항)
                 let coverUrl = "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=60";
                 if (coverFile) {
                     const coverRef = storage.ref().child('covers/' + Date.now() + '_' + coverFile.name);
@@ -849,7 +906,6 @@
                     coverUrl = await coverSnapshot.ref.getDownloadURL();
                 }
 
-                // 3. Firestore 데이터베이스에 곡 정보 추가 (실시간 동기화 핵심)
                 const newTrack = {
                     title: title,
                     album: album || "OTOKBANG 1ST ALBUM",
